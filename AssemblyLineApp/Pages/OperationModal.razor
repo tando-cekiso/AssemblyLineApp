@@ -1,0 +1,198 @@
+﻿@using AssemblyLineApp.Data;
+@using AssemblyLineApp.Services;
+@inject IOperationService OperationService
+@inject IDeviceService DeviceService
+
+@if (Visible)
+{
+    <div class="modal-overlay">
+        <div class="modal card">
+            <div class="card-header">
+                <h4>@(isEditMode ? "Edit Operation" : "Add New Operation")</h4>
+                <button class="close-btn" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="card-body">
+                <input type="text" @bind="operationName" class="form-control mb-2" placeholder="Operation Name" />
+                <select @bind="selectedDeviceId" class="form-select mb-3">
+                    <option value="">Select a Device</option>
+                    @foreach (var device in availableDevices)
+                    {
+                        <option value="@device.DeviceId">@device.Name (@device.DeviceType)</option>
+                    }
+                </select>
+                <select @bind="selectedDeviceType" class="form-select mb-3">
+                    @foreach (DeviceType type in Enum.GetValues(typeof(DeviceType)))
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+
+                @if (selectedDeviceType == DeviceType.LaserCutter)
+                {
+                    <div>
+                        <label>Laser Intensity</label>
+                        <input type="number" @bind="laserIntensity" class="form-control mb-2" />
+                        <label>Safety Check Required</label>
+                        <input type="checkbox" @bind="safetyVheckRequired" class="form-check-input mb-3" />
+                    </div>
+                }
+
+                <!-- Show Quality Assurance fields if warning has been triggered -->
+                @if (showQualityAssuranceFields)
+                {
+                    <div>
+                        <label>Validation Code (Quality Assurance)</label>
+                        <input type="text" @bind="validationCode" class="form-control mb-2" />
+                        <label>Outcome Status (Quality Assurance)</label>
+                        <input type="text" @bind="status" class="form-control mb-3" />
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(warningMsg))
+                {
+                    <div class="alert alert-warning">@warningMsg</div>
+                }
+
+                <DeviceForm DeviceType="selectedDeviceType" />
+
+                <div class="card-footer d-flex justify-content-end">
+                    <button @onclick="AddOperation" class="btn btn-primary me-2">Add Operation</button>
+                    <button @onclick="CloseModal" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool Visible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> VisibleChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnOperationAdded { get; set; }
+
+    private string operationName;
+    private DeviceType selectedDeviceType;
+    private string deviceName;
+    private int laserIntensity;
+    private bool safetyVheckRequired;
+    private string validationCode;
+    private string status;
+    private string warningMsg;
+    private bool showLaserCutterFields = false;
+    private bool showQualityAssuranceFields = false;
+    private bool isEditMode = false;
+    private int? editOperationId = null;
+    private int? selectedDeviceId;
+    private List<Devices> availableDevices = new();
+
+
+    private void CloseModal()
+    {
+        ClearFields();
+        Visible = false;
+        VisibleChanged.InvokeAsync(Visible);
+        Console.WriteLine("Modal closed");
+        StateHasChanged(); 
+    }
+
+
+
+    protected override void OnParametersSet()
+    {
+    
+        if (Visible)
+        {
+            availableDevices = DeviceService.GetDevices().ToList();
+        }
+    }
+
+    private void AddOperation()
+    {
+        if (string.IsNullOrWhiteSpace(operationName))
+        {
+            warningMsg = "Operation name is required.";
+            return;
+        }
+
+        if (!selectedDeviceId.HasValue)
+        {
+            warningMsg = "Please select a device. Alternatively add to devices";
+            return;
+        }
+
+        if (selectedDeviceType == DeviceType.LaserCutter)
+        {
+            if (!showQualityAssuranceFields)
+            {
+                warningMsg = "A Laser cutter requires Quality Assurance Scanner validation details.";
+                showQualityAssuranceFields = true;
+                StateHasChanged(); 
+                return;
+            }
+            else if (string.IsNullOrWhiteSpace(validationCode) || string.IsNullOrWhiteSpace(status))
+            {
+                warningMsg = "Please complete the Quality Assurance Scanner validation details.";
+                return;
+            }
+        }
+
+        warningMsg = string.Empty; 
+
+        var device = availableDevices.FirstOrDefault(d => d.DeviceId == selectedDeviceId.Value);
+        var newOperation = new Operation
+            {
+                Name = operationName,
+                Device = device,
+                OrderInWhichToPerform = OperationService.AddNew()
+            };
+
+        OperationService.AddOperation(newOperation, out warningMsg);
+
+        if (string.IsNullOrEmpty(warningMsg))
+        {
+           
+            OnOperationAdded.InvokeAsync();
+            CloseModal(); 
+        }
+        else
+        {
+            StateHasChanged(); 
+        }
+    }
+
+
+    public void ClearFields()
+    {
+        operationName = string.Empty;
+        selectedDeviceType = default;
+        deviceName = string.Empty;
+        laserIntensity = 0;
+        safetyVheckRequired = false;
+        validationCode = string.Empty;
+        status = string.Empty;
+        warningMsg = string.Empty;
+        showLaserCutterFields = false;
+        showQualityAssuranceFields = false;
+    }
+
+
+    public void LoadOperationForEditing(Operation operation)
+    {
+        // Set operation details into modal fields
+        editOperationId = operation.OperationId;
+        isEditMode = true;
+        operationName = operation.Name;
+        deviceName = operation.Device.Name;
+        selectedDeviceType = operation.Device.DeviceType;
+        // laserIntensity = operation.Device.LaserIntensity;
+        // safetyVheckRequired = operation.Device.safetyVheckRequired;
+        // validationCode = operation.Device.ValidationCode;
+        // status = operation.Device.OutcomeStatus;
+        showQualityAssuranceFields = selectedDeviceType == DeviceType.LaserCutter;
+        warningMsg = string.Empty;
+    }
+}

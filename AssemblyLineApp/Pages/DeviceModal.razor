@@ -1,0 +1,130 @@
+﻿@using AssemblyLineApp.Data;
+@using AssemblyLineApp.Services;
+@inject IDeviceService DeviceService
+
+@if (Visible)
+{
+    <div class="modal-overlay">
+        <div class="modal card">
+            <div class="card-header">
+                <h4>@(isEditMode ? "Edit Device" : "Add New Device")</h4>
+                <button class="close-btn" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="card-body">
+                <input type="text" @bind="deviceName" class="form-control mb-2" placeholder="Device Name" />
+
+              @*   <select @bind="selectedDeviceType" class="form-select mb-3">
+                    @foreach (DeviceType type in Enum.GetValues(typeof(DeviceType)))
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select> *@
+
+                @if (!string.IsNullOrEmpty(warningMsg))
+                {
+                    <div class="alert alert-warning">@warningMsg</div>
+                }
+
+                <div class="card-footer d-flex justify-content-end">
+                    <button @onclick="SaveDevice" class="btn btn-primary me-2">@((isEditMode ? "Update Device" : "Add Device"))</button>
+                    <button @onclick="CloseModal" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public EventCallback OnDeviceAdded { get; set; }
+
+    private string deviceName;
+    private DeviceType selectedDeviceType;
+    private string warningMsg;
+    private bool isEditMode = false;
+    private int? editingDeviceId = null;
+
+
+    private void CloseModal()
+    {
+        ClearFields();
+        Visible = false;
+        VisibleChanged.InvokeAsync(Visible);
+    }
+
+    public void LoadDeviceForEditing(Devices device)
+    {
+        isEditMode = true;
+        editingDeviceId = device.DeviceId;
+        deviceName = device.Name;
+      
+        warningMsg = string.Empty;
+    }
+
+    private void SaveDevice()
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            warningMsg = "Device name is required.";
+            return;
+        }
+
+        if (isEditMode && editingDeviceId.HasValue)
+        {
+            var updatedDevice = new Devices
+                {
+                    DeviceId = editingDeviceId.Value,
+                    Name = deviceName,
+                    
+                };
+            DeviceService.UpdateDevice(updatedDevice);
+        }
+        else
+        {
+            var newDevice = new Devices
+                {
+                    Name = deviceName,
+                   
+                };
+            DeviceService.AddDevice(newDevice);
+        }
+
+        OnDeviceAdded.InvokeAsync();
+        CloseModal();
+    }
+
+    public void ClearFields()
+    {
+        deviceName = string.Empty;
+        selectedDeviceType = default;
+        warningMsg = string.Empty;
+        isEditMode = false;
+        editingDeviceId = null;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
